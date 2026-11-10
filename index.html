@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Pixel Crossy Road</title>
+<title>Pixel Crossy Road — Improved</title>
 <style>
 body { background: #000; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; image-rendering: pixelated; }
-canvas { border: 4px solid #333; image-rendering: pixelated; }
+canvas { border: 6px solid #333; image-rendering: pixelated; }
 </style>
 </head>
 <body>
@@ -14,105 +14,155 @@ canvas { border: 4px solid #333; image-rendering: pixelated; }
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
-let chicken = {x:180, y:520};
-let lanes = [];
-let score = 0;
-let frame = 0;
-let cameraY = 0;
+
+let chicken, lanes, score, best, frame, cameraY, state;
 
 function generateLane(y, type) {
   const lane = {y, type, objects: []};
   if (type === 'road') {
     for (let i=0; i<3; i++) {
-      lane.objects.push({x: Math.random()*400, speed: 2+Math.random()*2, dir: Math.random()>0.5?1:-1, w:40});
+      lane.objects.push({x: Math.random()*400, speed: 2+Math.random()*2.5, dir: Math.random()>0.5?1:-1, w:45, color: ['#f44','#44f','#fa0'][Math.floor(Math.random()*3)]});
     }
   } else if (type === 'river') {
     for (let i=0; i<2; i++) {
-      lane.objects.push({x: Math.random()*400, speed: 1+Math.random(), w:60});
+      lane.objects.push({x: Math.random()*400, speed: 1+Math.random()*1.2, w:70});
     }
   }
   return lane;
 }
 
-for (let i=0; i<20; i++) {
-  const type = i % 4 === 0 ? 'grass' : i % 4 === 1 ? 'road' : i % 4 === 2 ? 'grass' : 'river';
-  lanes.push(generateLane(600 - i*40, type));
+function init() {
+  chicken = {x:180, y:520};
+  lanes = [];
+  score = 0;
+  best = parseInt(localStorage.getItem('crossyBest')||'0');
+  frame = 0;
+  cameraY = 0;
+  state = 'start';
+  for (let i=0; i<22; i++) {
+    const type = i % 5 === 0 ? 'grass' : i % 5 === 1 ? 'road' : i % 5 === 2 ? 'grass' : i % 5 === 3 ? 'river' : 'grass';
+    lanes.push(generateLane(600 - i*40, type));
+  }
 }
 
-function loop() {
-  frame++;
-  lanes.forEach(lane => {
-    if (lane.type === 'road' || lane.type === 'river') {
-      lane.objects.forEach(o => {
-        o.x += o.speed * (o.dir || -1);
-        if (o.x > 450) o.x = -50;
-        if (o.x < -50) o.x = 450;
-      });
-    }
-  });
-
-  // Collision
-  const currentLane = lanes.find(l => Math.abs(l.y - chicken.y) < 20);
-  if (currentLane && currentLane.type === 'road') {
-    currentLane.objects.forEach(o => {
-      if (chicken.x < o.x + o.w && chicken.x + 30 > o.x) {
-        alert('Hit by car! Score: '+score);
-        location.reload();
-      }
-    });
-  }
-  if (currentLane && currentLane.type === 'river') {
-    let onLog = false;
-    currentLane.objects.forEach(o => {
-      if (chicken.x > o.x && chicken.x < o.x + o.w) {
-        onLog = true;
-        chicken.x += o.speed * -1;
-      }
-    });
-    if (!onLog) {
-      alert('Drowned! Score: '+score);
-      location.reload();
-    }
-  }
-
-  if (chicken.y < cameraY + 100) {
-    cameraY = chicken.y - 100;
-    score = Math.max(score, Math.floor((520 - chicken.y) / 40));
-  }
-
+function draw() {
   ctx.fillStyle = '#87CEEB';
   ctx.fillRect(0,0,400,600);
   ctx.save();
   ctx.translate(0, -cameraY);
   lanes.forEach(lane => {
     if (lane.type === 'grass') ctx.fillStyle = '#0a0';
-    else if (lane.type === 'road') ctx.fillStyle = '#333';
-    else ctx.fillStyle = '#00f';
+    else if (lane.type === 'road') ctx.fillStyle = '#444';
+    else ctx.fillStyle = '#006';
     ctx.fillRect(0, lane.y, 400, 40);
     if (lane.type === 'road') {
-      ctx.fillStyle = '#f00';
-      lane.objects.forEach(o => ctx.fillRect(o.x, lane.y+5, o.w, 25));
+      lane.objects.forEach(o => {
+        ctx.fillStyle = o.color;
+        ctx.fillRect(o.x, lane.y+6, o.w, 28);
+        ctx.fillStyle = '#000';
+        ctx.fillRect(o.x+4, lane.y+10, 10, 6);
+        ctx.fillRect(o.x+o.w-14, lane.y+10, 10, 6);
+      });
     } else if (lane.type === 'river') {
       ctx.fillStyle = '#8B4513';
-      lane.objects.forEach(o => ctx.fillRect(o.x, lane.y+5, o.w, 25));
+      lane.objects.forEach(o => ctx.fillRect(o.x, lane.y+8, o.w, 24));
     }
   });
+  // Chicken
   ctx.fillStyle = '#ff0';
-  ctx.fillRect(chicken.x, chicken.y, 30, 30);
+  ctx.fillRect(chicken.x, chicken.y, 32, 32);
+  ctx.fillStyle = '#f80';
+  ctx.fillRect(chicken.x+6, chicken.y+6, 8, 6);
+  ctx.fillRect(chicken.x+18, chicken.y+6, 8, 6);
   ctx.restore();
+
   ctx.fillStyle = '#000';
-  ctx.font = '20px monospace';
+  ctx.font = 'bold 22px monospace';
   ctx.fillText('Score: '+score, 10, 30);
+  ctx.font = '16px monospace';
+  ctx.fillText('Best: '+best, 10, 50);
+
+  if (state === 'start') {
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0,0,400,600);
+    ctx.fillStyle = '#ff0';
+    ctx.font = 'bold 28px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('CROSSY ROAD', 200, 220);
+    ctx.font = '16px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('Arrows to hop', 200, 270);
+    ctx.fillText('SPACE to start', 200, 310);
+  }
+  if (state === 'over') {
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(0,0,400,600);
+    ctx.fillStyle = '#f44';
+    ctx.font = 'bold 32px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('GAME OVER', 200, 220);
+    ctx.fillStyle = '#fff';
+    ctx.font = '20px monospace';
+    ctx.fillText('Score: '+score, 200, 270);
+    ctx.fillText('SPACE to retry', 200, 320);
+  }
+}
+
+function update() {
+  if (state !== 'play') return;
+  frame++;
+  lanes.forEach(lane => {
+    if (lane.type === 'road' || lane.type === 'river') {
+      lane.objects.forEach(o => {
+        o.x += o.speed * (o.dir || -1);
+        if (o.x > 450) o.x = -60;
+        if (o.x < -60) o.x = 450;
+      });
+    }
+  });
+
+  const currentLane = lanes.find(l => Math.abs(l.y - chicken.y) < 22);
+  if (currentLane && currentLane.type === 'road') {
+    currentLane.objects.forEach(o => {
+      if (chicken.x < o.x + o.w - 4 && chicken.x + 32 > o.x + 4) state = 'over';
+    });
+  }
+  if (currentLane && currentLane.type === 'river') {
+    let onLog = false;
+    currentLane.objects.forEach(o => {
+      if (chicken.x > o.x && chicken.x < o.x + o.w - 10) {
+        onLog = true;
+        chicken.x += (o.dir || -1) * o.speed;
+      }
+    });
+    if (!onLog) state = 'over';
+  }
+
+  if (chicken.y < cameraY + 80) {
+    cameraY = chicken.y - 80;
+    score = Math.max(score, Math.floor((520 - chicken.y) / 40));
+    if (score > best) { best = score; localStorage.setItem('crossyBest', best); }
+  }
+}
+
+function loop() {
+  update();
+  draw();
   requestAnimationFrame(loop);
 }
 
 document.addEventListener('keydown', e => {
+  if ((state === 'start' || state === 'over') && e.code === 'Space') {
+    init(); state = 'play'; return;
+  }
+  if (state !== 'play') return;
   if (e.key === 'ArrowUp') chicken.y -= 40;
   if (e.key === 'ArrowDown') chicken.y += 40;
   if (e.key === 'ArrowLeft') chicken.x = Math.max(0, chicken.x - 40);
-  if (e.key === 'ArrowRight') chicken.x = Math.min(370, chicken.x + 40);
+  if (e.key === 'ArrowRight') chicken.x = Math.min(368, chicken.x + 40);
 });
 
+init();
 loop();
 </script>
 </body>
